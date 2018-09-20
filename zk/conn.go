@@ -384,16 +384,20 @@ func (c *Conn) sendEvent(evt Event) {
 func (c *Conn) connect() error {
 	var retryStart bool
 	for {
+		c.logger.Printf("inside connect()...")
 		c.serverMu.Lock()
 		c.server, retryStart = c.hostProvider.Next()
+		c.logger.Printf("inside connect()... c.server: %v, retrystart: %v", c.server, retryStart)
 		c.serverMu.Unlock()
 		c.setState(StateConnecting)
 		if retryStart {
 			c.flushUnsentRequests(ErrNoServer)
 			select {
 			case <-time.After(time.Second):
+				c.logger.Printf("inside connect()... case <-time.After(time.Second):")
 				// pass
 			case <-c.shouldQuit:
+				c.logger.Printf("inside connect()... case <-c.shouldQuit:")
 				c.setState(StateDisconnected)
 				c.flushUnsentRequests(ErrClosing)
 				return ErrClosing
@@ -402,11 +406,13 @@ func (c *Conn) connect() error {
 
 		zkConn, err := c.dialer("tcp", c.Server(), c.connectTimeout)
 		if err == nil {
+			c.logger.Printf("inside connect()... No Error connecting to server: %v, conn timeout: %v", c.Server(), c.connectTimeout)
 			c.conn = zkConn
 			c.setState(StateConnected)
 			if c.logInfo {
 				c.logger.Printf("Connected to %s", c.Server())
 			}
+			c.logger.Printf("inside connect()... returning")
 			return nil
 		}
 
@@ -622,6 +628,7 @@ func (c *Conn) flushUnsentRequests(err error) {
 		default:
 			return
 		case req := <-c.sendChan:
+			c.logger.Printf("flushUnsentRequests err: %v", err)
 			req.recvChan <- response{-1, err}
 		}
 	}
@@ -670,6 +677,7 @@ func (c *Conn) sendSetWatches() {
 	// than default of 1mb).
 	limit := 128 * 1024
 	if c.setWatchLimit > 0 {
+		c.logger.Printf("inside sendSetWatches()... chunking setwatchlimit: %v -> %v", c.setWatchLimit, limit)
 		limit = c.setWatchLimit
 	}
 
