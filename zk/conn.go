@@ -415,11 +415,14 @@ func (c *Conn) connect() error {
 }
 
 func (c *Conn) resendZkAuth(reauthReadyChan chan struct{}) {
+	c.logger.Printf("resendZkAuth called")
 	shouldCancel := func() bool {
 		select {
 		case <-c.shouldQuit:
+			c.logger.Printf("c.shouldQuit received")
 			return true
 		case <-c.closeChan:
+			c.logger.Printf("c.closeChan received")
 			return true
 		default:
 			return false
@@ -500,12 +503,15 @@ func (c *Conn) sendRequest(
 }
 
 func (c *Conn) loop() {
+	c.logger.Printf("loop() called")
 	for {
+		c.logger.Printf("in loop() trying to connect..")
 		if err := c.connect(); err != nil {
 			// c.Close() was called
+			c.logger.Printf("connect error, returning: %v", err)
 			return
 		}
-
+		c.logger.Printf("trying to authenticate..")
 		err := c.authenticate()
 		switch {
 		case err == ErrSessionExpired:
@@ -519,13 +525,16 @@ func (c *Conn) loop() {
 				c.logger.Printf("Authenticated: id=%d, timeout=%d", c.SessionID(), c.sessionTimeoutMs)
 			}
 			c.hostProvider.Connected()        // mark success
+			c.logger.Printf("Connected!")
 			c.closeChan = make(chan struct{}) // channel to tell send loop stop
 			reauthChan := make(chan struct{}) // channel to tell send loop that authdata has been resubmitted
 
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
+				c.logger.Printf("trying to read from reauth channel...")
 				<-reauthChan
+				c.logger.Printf("trying to read from reauth channel... read")
 				// This condition exists for signaling purposes, that the test
 				// `TestRecurringReAuthHang` was successful. The previous call
 				// `<-reauthChan` did not block. That means the
@@ -832,7 +841,9 @@ func (c *Conn) sendLoop() error {
 	for {
 		select {
 		case req := <-c.sendChan:
+			c.logger.Printf("receiving from sendChan")
 			if err := c.sendData(req); err != nil {
+				c.logger.Printf("error in c.sendData with req: %v, error: %v", req, err)
 				return err
 			}
 		case <-pingTicker.C:
