@@ -885,12 +885,14 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 		conn.SetReadDeadline(time.Now().Add(c.recvTimeout))
 		_, err := io.ReadFull(conn, buf[:4])
 		if err != nil {
+			c.logger.Printf("recvLoop error reading from io 4 bytes: %v", err)
 			return err
 		}
 
 		blen := int(binary.BigEndian.Uint32(buf[:4]))
 		if cap(buf) < blen {
 			if c.maxBufferSize > 0 && blen > c.maxBufferSize {
+
 				return fmt.Errorf("received packet from server with length %d, which exceeds max buffer size %d", blen, c.maxBufferSize)
 			}
 			buf = make([]byte, blen)
@@ -899,19 +901,25 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 		_, err = io.ReadFull(conn, buf[:blen])
 		conn.SetReadDeadline(time.Time{})
 		if err != nil {
+			c.logger.Printf("recvLoop error reading from io blen: %v : %v", blen, err)
 			return err
 		}
 
 		res := responseHeader{}
 		_, err = decodePacket(buf[:16], &res)
 		if err != nil {
+			c.logger.Printf("recvLoop error decoding packet: %v : %v", buf[:16], err)
 			return err
 		}
 
+
+
 		if res.Xid == -1 {
+			c.logger.Printf("recvLoop res.Xid = -1")
 			res := &watcherEvent{}
 			_, err := decodePacket(buf[16:blen], res)
 			if err != nil {
+				c.logger.Printf("recvLoop res.Xid = -1 error decoding blen: %v, buf[16:blen]: %v, error: %v", blen, buf[16:blen], err)
 				return err
 			}
 			ev := Event{
@@ -920,6 +928,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				Path:  res.Path,
 				Err:   nil,
 			}
+
 			c.sendEvent(ev)
 			wTypes := make([]watchType, 0, 2)
 			switch res.Type {
@@ -931,10 +940,14 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				wTypes = append(wTypes, watchTypeChild)
 			}
 			c.watchersLock.Lock()
+
 			for _, t := range wTypes {
 				wpt := watchPathType{res.Path, t}
+				watchers := c.watchers[wpt]
+				c.logger.Printf("recvLoop watchers: %v", watchers, len(watchers))
 				if watchers := c.watchers[wpt]; watchers != nil && len(watchers) > 0 {
 					for _, ch := range watchers {
+						c.logger.Printf("recvLoop res.Xid = -1")
 						ch <- ev
 						close(ch)
 					}
@@ -969,8 +982,10 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				if req.recvFunc != nil {
 					req.recvFunc(req, &res, err)
 				}
+				c.logger.Printf("recvLoop writing to recvChan Zxid: %v, err: %v", res.Zxid, err)
 				req.recvChan <- response{res.Zxid, err}
 				if req.opcode == opClose {
+					c.logger.Printf("recvLoop req.opcode = opClose")
 					return io.EOF
 				}
 			}
