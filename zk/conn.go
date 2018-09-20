@@ -841,7 +841,6 @@ func (c *Conn) sendLoop() error {
 	for {
 		select {
 		case req := <-c.sendChan:
-			c.logger.Printf("receiving from sendChan")
 			if err := c.sendData(req); err != nil {
 				c.logger.Printf("error in c.sendData with req: %v, error: %v", req, err)
 				return err
