@@ -541,6 +541,7 @@ func (c *Conn) loop() {
 				// `resendZkAuth` didn't block even on read loop error.
 				// See `TestRecurringReAuthHang`
 				if c.shouldDebugCloseRecvLoop() {
+					c.logger.Printf("shouldDebugCloseRecvLoop() called")
 					// It is possible that during the test the ZK conn will try
 					// to reconnect multiple times before cleanly closing the
 					// test. This select here is to prevent closing
@@ -548,10 +549,13 @@ func (c *Conn) loop() {
 					// panic.
 					select {
 					case <-c.debugReauthDone:
+						c.logger.Printf("<-c.debugReauthDone received")
 					default:
+						c.logger.Printf("closing c.debugReauthDone")
 						close(c.debugReauthDone)
 					}
 				}
+				c.logger.Printf("Calling c.sendLoop() again..")
 				err := c.sendLoop()
 				if err != nil || c.logInfo {
 					c.logger.Printf("Send loop terminated: err=%v", err)
@@ -742,6 +746,7 @@ func (c *Conn) authenticate() error {
 		Passwd:          c.passwd,
 	})
 	if err != nil {
+		c.logger.Printf("Error in authenticate() while encoding packet: %v", err)
 		return err
 	}
 
@@ -846,6 +851,7 @@ func (c *Conn) sendLoop() error {
 				return err
 			}
 		case <-pingTicker.C:
+			c.logger.Printf("received from pingTicker channel..")
 			n, err := encodePacket(c.buf[4:], &requestHeader{Xid: -2, Opcode: opPing})
 			if err != nil {
 				panic("zk: opPing should never fail to serialize")
@@ -857,10 +863,12 @@ func (c *Conn) sendLoop() error {
 			_, err = c.conn.Write(c.buf[:n+4])
 			c.conn.SetWriteDeadline(time.Time{})
 			if err != nil {
+				c.logger.Printf("Error encoding packet: %v. closing connection and returning", err)
 				c.conn.Close()
 				return err
 			}
 		case <-c.closeChan:
+			c.logger.Printf("received <-c.closeChan")
 			return nil
 		}
 	}
